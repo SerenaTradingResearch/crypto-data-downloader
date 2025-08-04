@@ -1,34 +1,22 @@
 import asyncio
-import json
+import gzip
 import os
-import time
-from datetime import datetime, timezone
+from typing import Dict, List, Union
+from urllib.parse import urlparse
 
+import numpy as np
 from aiohttp import ClientSession
 
-
-def parse_date(x="2024-01-01", fmt="%Y-%m-%d"):
-    dt = datetime.strptime(x, fmt).replace(tzinfo=timezone.utc)
-    return int(dt.timestamp() * 1e3)
-
-
-def timestamp():
-    return int(time.time() * 1e3)
-
-
-def split_intervals(start, end, dt):
-    return [(t, min(t + dt, end)) for t in range(start, end, dt)]
-
-
-def save_json(x, path):
-    with open(path, "w+") as f:
-        json.dump(x, f, indent=2)
-
-
-def load_json(path):
-    with open(path) as f:
-        return json.load(f)
-
+from .utils import (
+    encode_query,
+    load_json,
+    load_pkl,
+    parse_date,
+    save_json,
+    save_pkl,
+    split_intervals,
+    timestamp,
+)
 
 WEIGHTS = {
     "/api/v3/time": 1,
@@ -38,18 +26,34 @@ WEIGHTS = {
 
 TO_MS = {"m": 60e3}
 
+ALL_COLUMNS = [
+    "open_time",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "close_time",
+    "quote_volume",
+    "n_trades",
+    "taker_buy_base_volume",
+    "taker_buy_quote_volume",
+    "unused",
+]
+
 
 class CryptoDataDownloader:
     base = "https://api.binance.com"
-    info_path = "info.json"
+    info_path = "data/info.json"
     weight_lim = 3000
     weight_key = "x-mbx-used-weight-1m"
     kline_lim = 1000
     quote = "USDT"
     interval = "5m"
+    columns = ["open_time", "close"]
 
     async def get(s, url: str):
-        assert url.replace(s.base, "") in WEIGHTS, url
+        assert urlparse(url).path in WEIGHTS, url
         if not hasattr(s, "ses"):
             s.ses = ClientSession()
         async with s.ses.get(url) as r:
@@ -90,8 +94,19 @@ class CryptoDataDownloader:
         )
         s.symbols = symbols
 
+    async def get_kline(s, query: Dict):
+        query.update(dict(interval=s.interval, limit=s.kline_lim))
+        url = f"{s.base}/api/v3/klines?{encode_query(query)}"
+        r = await s.get(url)
+        if len(r) == 0:
+            return r
+        indices = [ALL_COLUMNS.index(x) for x in s.columns]
+        return np.array(r, float)[:, indices]
+
     async def download(s, start, end):
-        await s.get_time_n_weight()
+        os.makedirs("data", exist_ok=True)
+        data_path = f"data/crypto_data_{start}_{end}.pkl"
+        raw_path = f"data/raw_crypto_data_{start}_{end}.pkl"
         await s.get_info()
 
         start, end = parse_date(start), parse_date(end)
@@ -99,16 +114,59 @@ class CryptoDataDownloader:
         dt = int(s.kline_lim * a * TO_MS[b])
         intervals = split_intervals(start, end, dt)
         n_req = len(intervals) * len(s.symbols)
-        tot_weight = n_req * WEIGHTS["/api/v3/klines"]
-        n_mins = tot_weight / s.weight_lim
+        weight = WEIGHTS["/api/v3/klines"]
+        n_mins = n_req * weight / s.weight_lim
         print(
             f"{len(intervals)} intervals * {len(s.symbols)} symbols = {n_req} requests -> {n_mins} minutes"
         )
 
+        if os.path.exists(raw_path):
+            s.data = load_pkl(raw_path)
+        else:
+            s.data = []
+            for x in s.symbols:
+                sym = x["symbol"]
+                s.data += [
+                    dict(query=dict(symbol=sym, startTime=a, endTime=b), res=None)
+                    for a, b in intervals
+                ]
+
+        while True:
+            left = [x for x in s.data if x["res"] is None]
+            print(f"left: {len(left)}/{len(s.data)}")
+            if len(left) == 0:
+                break
+            await s.get_time_n_weight()
+            num = (s.weight_lim - s.weight_used) // weight
+
+            async def get_one(x):
+                try:
+                    x["res"] = await s.get_kline(x["query"])
+                except Exception as e:
+                    s.errors.append(f"{x['query']} -> {e}")
+
+            s.errors = []
+            await asyncio.gather(*[get_one(x) for x in left[:num]])
+            save_pkl(s.data, raw_path)
+            if len(s.errors):
+                save_json(s.errors, "data/errors.json")
+            await asyncio.sleep(60)
+
+        data2: Dict[str, Union[np.ndarray, List[np.ndarray]]] = {}
+        for x in s.data:
+            sym = x["query"]["symbol"]
+            if sym not in data2:
+                data2[sym] = []
+            if len(x["res"]):
+                data2[sym].append(x["res"])
+        for sym, arrays in list(data2.items()):
+            # print(sym, [f"{format_date(x[0, 0])} {format_date(x[-1, 0])}" for x in arrays])
+            if len(arrays):
+                data2[sym] = np.concatenate(arrays)
+                # print(sym, data2[sym].shape)
+            else:
+                del data2[sym]
+        save_pkl(data2, data_path, gzip.open)
+
         if hasattr(s, "ses"):
             await s.ses.close()
-
-
-if __name__ == "__main__":
-    dl = CryptoDataDownloader()
-    asyncio.run(dl.download("2024-01-01", "2025-01-01"))
