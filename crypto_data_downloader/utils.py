@@ -1,3 +1,4 @@
+import gzip
 import json
 import pickle
 import time
@@ -6,6 +7,14 @@ from typing import Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+TO_MS = {
+    "s": 1e3,
+    "m": 60e3,
+    "h": 60 * 60e3,
+    "d": 24 * 60 * 60e3,
+    "w": 7 * 24 * 60 * 60e3,
+}
 
 
 def parse_date(x="2024-01-01", fmt="%Y-%m-%d"):
@@ -27,22 +36,24 @@ def split_intervals(start, end, dt):
 
 
 def save_json(x, path):
-    with open(path, "w+") as f:
-        json.dump(x, f, indent=2)
+    with open(path, "w+", encoding="utf-8") as f:
+        json.dump(x, f, indent=2, ensure_ascii=False)
 
 
 def load_json(path):
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-def save_pkl(x, path, open=open):
-    with open(path, "wb+") as f:
+def save_pkl(x, path, gz=False):
+    open_ = gzip.open if gz else open
+    with open_(path, "wb+") as f:
         pickle.dump(x, f)
 
 
-def load_pkl(path, open=open):
-    with open(path, "rb") as f:
+def load_pkl(path, gz=False):
+    open_ = gzip.open if gz else open
+    with open_(path, "rb") as f:
         return pickle.load(f)
 
 

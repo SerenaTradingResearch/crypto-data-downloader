@@ -1,13 +1,12 @@
 import asyncio
-import gzip
 import os
 from typing import Dict, List, Union
-from urllib.parse import urlparse
 
 import numpy as np
 from aiohttp import ClientSession
 
 from .utils import (
+    TO_MS,
     encode_query,
     load_json,
     load_pkl,
@@ -24,7 +23,6 @@ WEIGHTS = {
     "/api/v3/klines": 2,
 }
 
-TO_MS = {"m": 60e3}
 
 ALL_COLUMNS = [
     "open_time",
@@ -45,15 +43,16 @@ ALL_COLUMNS = [
 class CryptoDataDownloader:
     base = "https://api.binance.com"
     info_path = "data/info.json"
-    weight_lim = 3000
     weight_key = "x-mbx-used-weight-1m"
-    kline_lim = 1000
+
+    weight_lim = 5000
     quote = "USDT"
     interval = "5m"
+    kline_lim = 1000
     columns = ["open_time", "close"]
 
     async def get(s, url: str):
-        assert urlparse(url).path in WEIGHTS, url
+        # assert urlparse(url).path in WEIGHTS, url
         if not hasattr(s, "ses"):
             s.ses = ClientSession()
         async with s.ses.get(url) as r:
@@ -166,7 +165,7 @@ class CryptoDataDownloader:
                 # print(sym, data2[sym].shape)
             else:
                 del data2[sym]
-        save_pkl(data2, data_path, gzip.open)
+        save_pkl(data2, data_path, gz=True)
 
         if hasattr(s, "ses"):
             await s.ses.close()
