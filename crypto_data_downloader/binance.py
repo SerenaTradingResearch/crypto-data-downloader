@@ -8,7 +8,6 @@ from aiohttp import ClientSession
 from .utils import (
     TO_MS,
     encode_query,
-    load_json,
     load_pkl,
     parse_date,
     save_json,
@@ -71,12 +70,9 @@ class CryptoDataDownloader:
         )
 
     async def get_info(s):
-        if os.path.exists(s.info_path):
-            s.info = load_json(s.info_path)
-        else:
-            url = f"{s.base}/api/v3/exchangeInfo"
-            s.info = await s.get(url)
-            save_json(s.info, s.info_path)
+        url = f"{s.base}/api/v3/exchangeInfo"
+        s.info = await s.get(url)
+        save_json(s.info, s.info_path)
 
         r = next(
             x for x in s.info["rateLimits"] if x["rateLimitType"] == "REQUEST_WEIGHT"
@@ -103,7 +99,6 @@ class CryptoDataDownloader:
         return np.array(r, float)[:, indices]
 
     async def download(s, start, end):
-        os.makedirs("data", exist_ok=True)
         data_path = f"data/crypto_data_{start}_{end}.pkl"
         raw_path = f"data/raw_crypto_data_{start}_{end}.pkl"
         await s.get_info()

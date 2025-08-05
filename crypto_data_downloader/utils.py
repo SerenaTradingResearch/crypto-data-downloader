@@ -1,5 +1,6 @@
 import gzip
 import json
+import os
 import pickle
 import time
 from datetime import datetime, timezone
@@ -36,6 +37,7 @@ def split_intervals(start, end, dt):
 
 
 def save_json(x, path):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w+", encoding="utf-8") as f:
         json.dump(x, f, indent=2, ensure_ascii=False)
 
@@ -46,6 +48,7 @@ def load_json(path):
 
 
 def save_pkl(x, path, gz=False):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     open_ = gzip.open if gz else open
     with open_(path, "wb+") as f:
         pickle.dump(x, f)
@@ -62,7 +65,8 @@ def encode_query(x: Dict):
 
 
 def plot_crypto_data(x: Dict[str, np.ndarray], id):
-    R, C = 10, 5
+    C = min(5, len(x))
+    R = min(10, int(len(x) / C))
     plt.figure(figsize=(4 * C, 3 * R))
     plt.suptitle(f"{R*C}/{len(x)} symbols", fontsize=25)
     x = list(x.items())
@@ -75,3 +79,4 @@ def plot_crypto_data(x: Dict[str, np.ndarray], id):
         plt.xticks(rotation=45)
     plt.tight_layout(rect=[0, 0, 1, 0.98])
     plt.savefig(f"{id}.png")
+    plt.close()

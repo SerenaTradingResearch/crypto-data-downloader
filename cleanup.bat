@@ -1,3 +1,3 @@
 isort .
 black .
-flake8 --extend-ignore= --max-line-length=200 .
+flake8 --extend-ignore=E203 --max-line-length=200 .
