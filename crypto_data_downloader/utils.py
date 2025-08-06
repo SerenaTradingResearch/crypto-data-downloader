@@ -23,7 +23,7 @@ def parse_date(x="2024-01-01", fmt="%Y-%m-%d"):
     return int(dt.timestamp() * 1e3)
 
 
-def format_date(ts: int, fmt="%Y-%m-%d %H:%M"):
+def format_date(ts: int, fmt="%Y-%m-%d %H:%M:%S"):
     dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
     return dt.strftime(fmt)
 
