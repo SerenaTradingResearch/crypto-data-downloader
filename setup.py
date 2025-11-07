@@ -5,7 +5,7 @@ with open("README.md", encoding="utf-8") as f:
 
 setup(
     name="crypto-data-downloader",
-    version="0.1.3",
+    version="0.1.4",
     author="Ricky Ding",
     author_email="e0134117@u.nus.edu",
     description="High-speed cryptocurrency OHLCV data downloader via concurrent API requests",

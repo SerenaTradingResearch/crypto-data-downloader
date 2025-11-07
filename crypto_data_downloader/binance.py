@@ -20,6 +20,10 @@ WEIGHTS = {
     "/api/v3/time": 1,
     "/api/v3/exchangeInfo": 20,
     "/api/v3/klines": 2,
+    # ==========================================
+    "/fapi/v1/time": 1,
+    "/fapi/v1/exchangeInfo": 1,
+    "/fapi/v1/klines": 5,  # https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data#request-weight
 }
 
 
@@ -40,8 +44,12 @@ ALL_COLUMNS = [
 
 
 class CryptoDataDownloader:
+    name = "crypto_data"
     base = "https://api.binance.com"
-    info_path = "data/info.json"
+    INFO_PATH = "/api/v3/exchangeInfo"
+    TIME_PATH = "/api/v3/time"
+    KLINE_PATH = "/api/v3/klines"
+
     weight_key = "x-mbx-used-weight-1m"
 
     weight_lim = 5000
@@ -49,6 +57,10 @@ class CryptoDataDownloader:
     interval = "5m"
     kline_lim = 1000
     columns = ["open_time", "close"]
+
+    @property
+    def is_spot(s):
+        return s.name == "crypto_data"
 
     async def get(s, url: str):
         # assert urlparse(url).path in WEIGHTS, url
@@ -60,7 +72,7 @@ class CryptoDataDownloader:
             return await r.json()
 
     async def get_time_n_weight(s):
-        url = f"{s.base}/api/v3/time"
+        url = f"{s.base}{s.TIME_PATH}"
         r = await s.get(url)
         t_server = r["serverTime"]
         t_my = timestamp()
@@ -70,9 +82,9 @@ class CryptoDataDownloader:
         )
 
     async def get_info(s):
-        url = f"{s.base}/api/v3/exchangeInfo"
+        url = f"{s.base}{s.INFO_PATH}"
         s.info = await s.get(url)
-        save_json(s.info, s.info_path)
+        save_json(s.info, f"data/{s.name}_info.json")
 
         r = next(
             x for x in s.info["rateLimits"] if x["rateLimitType"] == "REQUEST_WEIGHT"
@@ -81,7 +93,7 @@ class CryptoDataDownloader:
 
         symbols = [x for x in s.info["symbols"] if x["quoteAsset"] == s.quote]
         for x in symbols:
-            x["permissions"] = sum(x["permissionSets"], start=[])
+            x["permissions"] = sum(x["permissionSets"], start=[]) if s.is_spot else []
         spot = [x for x in symbols if "SPOT" in x["permissions"]]
         margin = [x for x in symbols if "MARGIN" in x["permissions"]]
         print(
@@ -91,16 +103,18 @@ class CryptoDataDownloader:
 
     async def get_kline(s, query: Dict):
         query.update(dict(interval=s.interval, limit=s.kline_lim))
-        url = f"{s.base}/api/v3/klines?{encode_query(query)}"
+        url = f"{s.base}{s.KLINE_PATH}?{encode_query(query)}"
         r = await s.get(url)
         if len(r) == 0:
             return r
         indices = [ALL_COLUMNS.index(x) for x in s.columns]
+        if "msg" in r:
+            return r["msg"]
         return np.array(r, float)[:, indices]
 
     async def download(s, start, end):
-        data_path = f"data/crypto_data_{start}_{end}.pkl"
-        raw_path = f"data/raw_crypto_data_{start}_{end}.pkl"
+        data_path = f"data/{s.name}_{start}_{end}.pkl"
+        raw_path = f"data/raw_{s.name}_{start}_{end}.pkl"
         await s.get_info()
 
         start, end = parse_date(start), parse_date(end)
@@ -108,7 +122,7 @@ class CryptoDataDownloader:
         dt = int(s.kline_lim * a * TO_MS[b])
         intervals = split_intervals(start, end, dt)
         n_req = len(intervals) * len(s.symbols)
-        weight = WEIGHTS["/api/v3/klines"]
+        weight = WEIGHTS[s.KLINE_PATH]
         n_mins = n_req * weight / s.weight_lim
         print(
             f"{len(intervals)} intervals * {len(s.symbols)} symbols = {n_req} requests -> {n_mins} minutes"
@@ -155,7 +169,7 @@ class CryptoDataDownloader:
                 data2[sym].append(x["res"])
         for sym, arrays in list(data2.items()):
             # print(sym, [f"{format_date(x[0, 0])} {format_date(x[-1, 0])}" for x in arrays])
-            if len(arrays):
+            if len(arrays) and all([isinstance(x, np.ndarray) for x in arrays]):
                 data2[sym] = np.concatenate(arrays)
                 # print(sym, data2[sym].shape)
             else:
@@ -164,3 +178,11 @@ class CryptoDataDownloader:
 
         if hasattr(s, "ses"):
             await s.ses.close()
+
+
+class FuturesDataDownloader(CryptoDataDownloader):
+    name = "futures_data"
+    base = "https://fapi.binance.com"
+    INFO_PATH = "/fapi/v1/exchangeInfo"
+    TIME_PATH = "/fapi/v1/time"
+    KLINE_PATH = "/fapi/v1/klines"
