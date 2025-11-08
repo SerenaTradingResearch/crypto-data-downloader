@@ -37,9 +37,14 @@ def split_intervals(start, end, dt):
 
 
 def save_json(x, path):
+    def default(y):
+        if isinstance(y, np.ndarray):
+            return json.dumps(y.tolist())
+        return str(y)
+
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w+", encoding="utf-8") as f:
-        json.dump(x, f, indent=2, ensure_ascii=False)
+        json.dump(x, f, indent=2, ensure_ascii=False, default=default)
 
 
 def load_json(path):

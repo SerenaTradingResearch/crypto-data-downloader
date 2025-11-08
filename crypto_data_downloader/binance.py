@@ -49,10 +49,10 @@ class CryptoDataDownloader:
     INFO_PATH = "/api/v3/exchangeInfo"
     TIME_PATH = "/api/v3/time"
     KLINE_PATH = "/api/v3/klines"
+    weight_lim = 5000  # max 6000
 
     weight_key = "x-mbx-used-weight-1m"
 
-    weight_lim = 5000
     quote = "USDT"
     interval = "5m"
     kline_lim = 1000
@@ -112,6 +112,30 @@ class CryptoDataDownloader:
             return r["msg"]
         return np.array(r, float)[:, indices]
 
+    async def get_kline_many(s, queries=[], works=None, callback=lambda: None):
+        if works is None:
+            works = [dict(query=q, res=None) for q in queries]
+        while True:
+            left = [x for x in works if x["res"] is None]
+            print(f"left: {len(left)}/{len(works)}")
+            if len(left) == 0:
+                return [x["res"] for x in works]
+            await s.get_time_n_weight()
+            num = (s.weight_lim - s.weight_used) // WEIGHTS[s.KLINE_PATH]
+
+            async def get_one(x):
+                try:
+                    x["res"] = await s.get_kline(x["query"])
+                except Exception as e:
+                    s.errors.append(f"{x['query']} -> {e}")
+
+            s.errors = []
+            await asyncio.gather(*map(get_one, left[:num]))
+            callback()
+            if len(s.errors):
+                save_json(s.errors, "data/errors.json")
+            await asyncio.sleep(60)
+
     async def download(s, start, end):
         data_path = f"data/{s.name}_{start}_{end}.pkl"
         raw_path = f"data/raw_{s.name}_{start}_{end}.pkl"
@@ -129,39 +153,20 @@ class CryptoDataDownloader:
         )
 
         if os.path.exists(raw_path):
-            s.data = load_pkl(raw_path)
+            works = load_pkl(raw_path)
         else:
-            s.data = []
+            works = []
             for x in s.symbols:
                 sym = x["symbol"]
-                s.data += [
+                works += [
                     dict(query=dict(symbol=sym, startTime=a, endTime=b), res=None)
                     for a, b in intervals
                 ]
 
-        while True:
-            left = [x for x in s.data if x["res"] is None]
-            print(f"left: {len(left)}/{len(s.data)}")
-            if len(left) == 0:
-                break
-            await s.get_time_n_weight()
-            num = (s.weight_lim - s.weight_used) // weight
-
-            async def get_one(x):
-                try:
-                    x["res"] = await s.get_kline(x["query"])
-                except Exception as e:
-                    s.errors.append(f"{x['query']} -> {e}")
-
-            s.errors = []
-            await asyncio.gather(*[get_one(x) for x in left[:num]])
-            save_pkl(s.data, raw_path)
-            if len(s.errors):
-                save_json(s.errors, "data/errors.json")
-            await asyncio.sleep(60)
+        await s.get_kline_many([], works, lambda: save_pkl(works, raw_path))
 
         data2: Dict[str, Union[np.ndarray, List[np.ndarray]]] = {}
-        for x in s.data:
+        for x in works:
             sym = x["query"]["symbol"]
             if sym not in data2:
                 data2[sym] = []
@@ -186,3 +191,4 @@ class FuturesDataDownloader(CryptoDataDownloader):
     INFO_PATH = "/fapi/v1/exchangeInfo"
     TIME_PATH = "/fapi/v1/time"
     KLINE_PATH = "/fapi/v1/klines"
+    weight_lim = 2000  # max 2400
