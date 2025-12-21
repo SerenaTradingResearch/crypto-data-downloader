@@ -130,11 +130,11 @@ class CryptoDataDownloader:
                     s.errors.append(f"{x['query']} -> {e}")
 
             s.errors = []
-            await asyncio.gather(*map(get_one, left[:num]))
+            res = await asyncio.gather(*map(get_one, left[:num]))
             callback()
             if len(s.errors):
                 save_json(s.errors, "data/errors.json")
-            await asyncio.sleep(60)
+            await asyncio.sleep(60) if len(res) > 10 else None
 
     async def download(s, start, end):
         data_path = f"data/{s.name}_{start}_{end}.pkl"
