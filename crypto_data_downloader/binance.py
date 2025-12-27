@@ -102,6 +102,8 @@ class CryptoDataDownloader:
         s.symbols = symbols
 
     async def get_kline(s, query: Dict):
+        if isinstance(query, str):
+            query = dict(symbol=query)
         query.update(dict(interval=s.interval, limit=s.kline_lim))
         url = f"{s.base}{s.KLINE_PATH}?{encode_query(query)}"
         r = await s.get(url)
