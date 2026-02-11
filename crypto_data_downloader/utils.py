@@ -1,9 +1,12 @@
+import asyncio
 import gzip
 import json
 import os
 import pickle
 import time
+import traceback
 from datetime import datetime, timezone
+from functools import wraps
 from typing import Dict
 
 import matplotlib.pyplot as plt
@@ -85,3 +88,31 @@ def plot_crypto_data(x: Dict[str, np.ndarray], id):
     plt.tight_layout(rect=[0, 0, 1, 0.98])
     plt.savefig(f"{id}.png")
     plt.close()
+
+
+# ===============
+
+
+def show_err(e: Exception = None):
+    if e is None:
+        lines = traceback.format_exc().splitlines()
+    else:
+        lines = traceback.format_exception(type(e), e, e.__traceback__)
+    msg = "\n".join("    " + x for x in lines)
+    print(f"\033[91m{msg}\033[0m")
+
+
+def retry(sleep=60):
+    def decorator(func):
+        @wraps(func)
+        async def func2(*args, **kwargs):
+            while True:
+                try:
+                    return await func(*args, **kwargs)
+                except Exception:
+                    show_err()
+                    await asyncio.sleep(sleep)
+
+        return func2
+
+    return decorator

@@ -10,6 +10,7 @@ from .utils import (
     encode_query,
     load_pkl,
     parse_date,
+    retry,
     save_json,
     save_pkl,
     split_intervals,
@@ -138,6 +139,7 @@ class CryptoDataDownloader:
                 save_json(s.errors, "data/errors.json")
             await asyncio.sleep(60) if len(res) > 10 else None
 
+    @retry(sleep=60)
     async def download(s, start, end):
         data_path = f"data/{s.name}_{start}_{end}.pkl"
         raw_path = f"data/raw_{s.name}_{start}_{end}.pkl"
