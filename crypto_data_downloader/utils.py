@@ -7,11 +7,13 @@ import time
 import traceback
 from datetime import datetime, timezone
 from functools import wraps
-from typing import Dict
+from typing import Dict, List
 
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
+
+D_TYPE = Dict[str, np.ndarray]
 
 TO_MS = {
     "s": 1e3,
@@ -20,6 +22,26 @@ TO_MS = {
     "d": 24 * 60 * 60e3,
     "w": 7 * 24 * 60 * 60e3,
 }
+
+
+def unique(x: np.ndarray, idx):
+    assert len(x.shape) == 2
+    _, indices = np.unique(x[:, idx], return_index=True)
+    return x[indices]
+
+
+def glue_n_fix_data(ds: List[D_TYPE], dt, t_idx):
+    keys = set().union(*[set(d.keys()) for d in ds])
+    res: D_TYPE = {}
+    for k in keys:
+        v = np.concat([d[k] for d in ds if k in d], axis=0)
+        v = unique(v, t_idx)
+        dts = np.diff(v[:, t_idx])
+        if np.all(dts == dt):
+            res[k] = v
+        else:
+            print(k, np.sum(dts != dt), "errors")
+    return res
 
 
 def parse_date(x="2024-01-01", fmt="%Y-%m-%d"):
@@ -69,7 +91,7 @@ def load_pkl(path, gz=False):
         return pickle.load(f)
 
 
-def save_h5(data: Dict[str, np.ndarray], path):
+def save_h5(data: D_TYPE, path):
     with h5py.File(path, "w") as f:
         for k, arr in data.items():
             f.create_dataset(k, data=arr, compression="gzip", chunks=True)
@@ -79,7 +101,7 @@ def encode_query(x: Dict):
     return "&".join([f"{k}={v}" for k, v in x.items()])
 
 
-def plot_crypto_data(x: Dict[str, np.ndarray], id):
+def plot_crypto_data(x: D_TYPE, id):
     C = min(5, len(x))
     R = min(10, int(len(x) / C))
     plt.figure(figsize=(4 * C, 3 * R))

@@ -8,6 +8,7 @@ from aiohttp import ClientSession
 from .utils import (
     TO_MS,
     encode_query,
+    glue_n_fix_data,
     load_pkl,
     parse_date,
     retry,
@@ -59,6 +60,10 @@ class CryptoDataDownloader:
     interval = "5m"
     kline_lim = 1000
     columns = ["open_time", "close"]
+
+    @property
+    def dt_ms(s):
+        return int(s.interval[:-1]) * TO_MS[s.interval[-1]]
 
     @property
     def is_spot(s):
@@ -142,14 +147,13 @@ class CryptoDataDownloader:
 
     @retry(sleep=60)
     async def download(s, start, end):
+        assert s.columns[0] == "open_time"
         data_path = f"data/{s.name}_{start}_{end}.h5"
         raw_path = f"data/raw_{s.name}_{start}_{end}.pkl"
         await s.get_info()
 
         start, end = parse_date(start), parse_date(end)
-        a, b = int(s.interval[:-1]), s.interval[-1]
-        dt = int(s.kline_lim * a * TO_MS[b])
-        intervals = split_intervals(start, end, dt)
+        intervals = split_intervals(start, end, dt=int(s.kline_lim * s.dt_ms))
         n_req = len(intervals) * len(s.symbols)
         weight = WEIGHTS[s.KLINE_PATH]
         n_mins = n_req * weight / s.weight_lim
@@ -184,6 +188,7 @@ class CryptoDataDownloader:
                 # print(sym, data2[sym].shape)
             else:
                 del data2[sym]
+        data2 = glue_n_fix_data([data2], s.dt_ms, t_idx=0)
         # save_pkl(data2, data_path, gz=True)
         save_h5(data2, data_path)
 
