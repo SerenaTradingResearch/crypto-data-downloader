@@ -11,6 +11,7 @@ from .utils import (
     load_pkl,
     parse_date,
     retry,
+    save_h5,
     save_json,
     save_pkl,
     split_intervals,
@@ -141,7 +142,7 @@ class CryptoDataDownloader:
 
     @retry(sleep=60)
     async def download(s, start, end):
-        data_path = f"data/{s.name}_{start}_{end}.pkl"
+        data_path = f"data/{s.name}_{start}_{end}.h5"
         raw_path = f"data/raw_{s.name}_{start}_{end}.pkl"
         await s.get_info()
 
@@ -183,7 +184,8 @@ class CryptoDataDownloader:
                 # print(sym, data2[sym].shape)
             else:
                 del data2[sym]
-        save_pkl(data2, data_path, gz=True)
+        # save_pkl(data2, data_path, gz=True)
+        save_h5(data2, data_path)
 
         if hasattr(s, "ses"):
             await s.ses.close()

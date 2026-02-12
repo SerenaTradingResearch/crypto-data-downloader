@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from typing import Dict
 
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -66,6 +67,12 @@ def load_pkl(path, gz=False):
     open_ = gzip.open if gz else open
     with open_(path, "rb") as f:
         return pickle.load(f)
+
+
+def save_h5(data: Dict[str, np.ndarray], path):
+    with h5py.File(path, "w") as f:
+        for k, arr in data.items():
+            f.create_dataset(k, data=arr, compression="gzip", chunks=True)
 
 
 def encode_query(x: Dict):
